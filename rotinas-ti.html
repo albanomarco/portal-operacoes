@@ -68,6 +68,10 @@ html[data-theme="light"] .app-header{background:linear-gradient(135deg,#16264a,#
 .status-bad{background:rgba(239,68,68,.18);color:#f87171;border:1px solid rgba(239,68,68,.4);}
 .icon-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;}
 .icon-btn:hover{background:rgba(255,255,255,.18);}
+.export-menu-wrap{position:relative;}
+.export-menu{position:absolute;top:46px;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);min-width:210px;z-index:60;overflow:hidden;}
+.export-menu button{display:block;width:100%;text-align:left;padding:11px 14px;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;}
+.export-menu button:hover{background:var(--bg-hover);}
 
 /* =========================================================
    NAV TABS
@@ -316,6 +320,15 @@ select.inline-select,input.inline-input{padding:7px 10px;border-radius:7px;borde
       <span id="headerTime">--:--:--</span>
     </div>
     <div id="headerStatus" class="status-pill status-ok">Carregando...</div>
+    <button id="btnHeaderPrint" class="icon-btn" title="Imprimir relatório">🖨️</button>
+    <div class="export-menu-wrap">
+      <button id="btnHeaderExport" class="icon-btn" title="Imprimir / Exportar / Importar dados">⬇️</button>
+      <div id="exportMenu" class="export-menu hidden">
+        <button type="button" data-action="csv">📄 Exportar CSV</button>
+        <button type="button" data-action="json">💾 Exportar Backup (JSON)</button>
+        <button type="button" data-action="import">⬆️ Importar Backup</button>
+      </div>
+    </div>
     <button id="btnTheme" class="icon-btn" title="Alternar tema claro/escuro">🌙</button>
     <button id="btnNotify" class="icon-btn" title="Ativar notificações">🔔</button>
   </div>
@@ -509,6 +522,10 @@ select.inline-select,input.inline-input{padding:7px 10px;border-radius:7px;borde
           <label>Localidade</label>
           <input type="text" id="fLocation" list="fLocationList" placeholder="Ex: Datacenter, Matriz, Filial SP, Sala de TI..." maxlength="120">
           <datalist id="fLocationList"></datalist>
+        </div>
+        <div class="form-field full">
+          <label>E-mail para resumo (opcional)</label>
+          <input type="email" id="fEmail" placeholder="voce@empresa.com" maxlength="160">
         </div>
         <div class="form-field">
           <label>Frequência</label>
@@ -740,7 +757,7 @@ function buildSeedTasks(){
   daily.forEach(([name,cat,time,pri])=>{
     tasks.push({
       id: uid(), name, description:'', category:cat, frequency:'diaria',
-      weekday:null, customDays:null, startDate:todayStr, time, location: defaultLocationForCategory(cat),
+      weekday:null, customDays:null, startDate:todayStr, time, location: defaultLocationForCategory(cat), email:'',
       priority:pri, reminderEnabled: !!time, reminderAdvance: 0,
       notes:'', active:true, createdAt:new Date().toISOString(),
       lastExecution:null, nextExecution: todayStr
@@ -750,7 +767,7 @@ function buildSeedTasks(){
   weekly.forEach(([name,cat,dow,time,pri])=>{
     tasks.push({
       id: uid(), name, description:'', category:cat, frequency:'semanal',
-      weekday:dow, customDays:null, startDate:todayStr, time, location: defaultLocationForCategory(cat),
+      weekday:dow, customDays:null, startDate:todayStr, time, location: defaultLocationForCategory(cat), email:'',
       priority:pri, reminderEnabled: !!time, reminderAdvance: 15,
       notes:'', active:true, createdAt:new Date().toISOString(),
       lastExecution:null, nextExecution: nextWeekday(dow)
@@ -760,7 +777,7 @@ function buildSeedTasks(){
   monthly.forEach(([name,cat])=>{
     tasks.push({
       id: uid(), name, description:'', category:cat, frequency:'mensal',
-      weekday:null, customDays:null, startDate:todayStr, time:'', location: defaultLocationForCategory(cat),
+      weekday:null, customDays:null, startDate:todayStr, time:'', location: defaultLocationForCategory(cat), email:'',
       priority:'media', reminderEnabled:false, reminderAdvance:15,
       notes:'', active:true, createdAt:new Date().toISOString(),
       lastExecution:null, nextExecution: firstOfNextMonth()
@@ -782,7 +799,7 @@ function loadState(){
       const parsed = JSON.parse(raw);
       // Garante que todos os campos esperados existam (migração leve)
       parsed.tasks = parsed.tasks || [];
-      parsed.tasks.forEach(t=>{ if(t.location === undefined) t.location = ''; });
+      parsed.tasks.forEach(t=>{ if(t.location === undefined) t.location = ''; if(t.email === undefined) t.email = ''; });
       parsed.history = parsed.history || [];
       parsed.history.forEach(h=>{ if(h.location === undefined) h.location = ''; });
       parsed.categories = parsed.categories || defaultCategories();
@@ -1211,9 +1228,11 @@ function taskCardHtml(task, mode){
   const lastExec = task.lastExecution ? (toBR(task.lastExecution.slice(0,10))+' '+task.lastExecution.slice(11)) : 'Nunca';
   const nextExec = task.nextExecution ? toBR(task.nextExecution) : '—';
 
+  const emailBtn = task.email ? `<button class="btn btn-sm" data-action="email" data-id="${task.id}" title="Abrir e-mail com o resumo desta tarefa para ${escapeAttr(task.email)}">📧 Enviar resumo</button>` : '';
+
   const actions = isDone
-    ? `<button class="btn btn-sm btn-secondary" data-action="undo" data-id="${task.id}">↺ Desfazer</button>`
-    : `<button class="btn btn-sm" data-action="edit" data-id="${task.id}">✎ Editar</button>
+    ? `${emailBtn}<button class="btn btn-sm btn-secondary" data-action="undo" data-id="${task.id}">↺ Desfazer</button>`
+    : `${emailBtn}<button class="btn btn-sm" data-action="edit" data-id="${task.id}">✎ Editar</button>
        <button class="btn btn-sm" data-action="duplicate" data-id="${task.id}">⧉ Duplicar</button>
        <button class="btn btn-sm" data-action="pause" data-id="${task.id}">⏸ Pausar</button>
        <button class="btn btn-sm btn-danger" data-action="delete" data-id="${task.id}">🗑 Excluir</button>`;
@@ -1308,6 +1327,46 @@ function attachChecklistEvents(area){
   area.querySelectorAll('[data-action="pause"]').forEach(b=> b.addEventListener('click', ()=> togglePause(b.dataset.id)));
   area.querySelectorAll('[data-action="delete"]').forEach(b=> b.addEventListener('click', ()=> deleteTask(b.dataset.id)));
   area.querySelectorAll('[data-action="undo"]').forEach(b=> b.addEventListener('click', ()=> undoComplete(b.dataset.id)));
+  area.querySelectorAll('[data-action="email"]').forEach(b=> b.addEventListener('click', ()=> sendTaskSummaryEmail(b.dataset.id)));
+}
+
+// Monta um e-mail (via link "mailto:") com o resumo da tarefa e abre o programa de e-mail padrão do usuário.
+// Como o sistema não tem backend, este é o único jeito de "enviar e-mail" 100% local: o usuário revisa e clica em enviar.
+function sendTaskSummaryEmail(taskId){
+  const task = getTask(taskId);
+  if(!task || !task.email) return;
+  const cat = getCategory(task.category);
+  const lastExec = task.lastExecution ? (toBR(task.lastExecution.slice(0,10))+' às '+task.lastExecution.slice(11)) : 'Nunca executada';
+  const nextExec = task.nextExecution ? toBR(task.nextExecution) : '—';
+
+  const subject = 'Resumo da tarefa: '+task.name;
+  const bodyLines = [
+    'Resumo da tarefa de rotina de TI',
+    '',
+    'Tarefa: '+task.name,
+    'Categoria: '+cat.name,
+    'Localidade: '+(task.location || '—'),
+    'Prioridade: '+task.priority,
+    'Frequência: '+frequencyLabel(task),
+    (task.time ? 'Horário: '+task.time : null),
+    'Última execução: '+lastExec,
+    'Próxima execução: '+nextExec,
+    (task.description ? 'Descrição: '+task.description : null),
+    (task.notes ? 'Observações: '+task.notes : null),
+    '',
+    'Enviado pelo painel Rotinas de TI em '+toBR(todayISO())+' às '+nowTimeStr()+'.'
+  ].filter(l=>l!==null);
+
+  const mailtoLink = 'mailto:'+encodeURIComponent(task.email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(bodyLines.join('\n'));
+
+  // Usa um link temporário em vez de window.location para não navegar a página caso o mailto falhe.
+  const a = document.createElement('a');
+  a.href = mailtoLink;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('Abrindo seu programa de e-mail com o resumo de "'+task.name+'"...', 'success');
 }
 
 /* ---------- TAREFAS PAUSADAS ---------- */
@@ -1562,6 +1621,7 @@ function openTaskModal(taskId){
     document.getElementById('fDesc').value = t.description||'';
     document.getElementById('fCategory').value = t.category;
     document.getElementById('fLocation').value = t.location||'';
+    document.getElementById('fEmail').value = t.email||'';
     document.getElementById('fPriority').value = t.priority;
     document.getElementById('fFrequency').value = t.frequency;
     document.getElementById('fWeekday').value = (t.weekday!==null && t.weekday!==undefined) ? String(t.weekday) : '1';
@@ -1591,6 +1651,12 @@ function saveTaskFromForm(ev){
   const name = document.getElementById('fName').value.trim();
   if(!name){ showToast('Informe o nome da tarefa.','error'); return; }
 
+  const email = document.getElementById('fEmail').value.trim();
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    showToast('Informe um e-mail válido para o resumo, ou deixe o campo em branco.','error');
+    return;
+  }
+
   const frequency = document.getElementById('fFrequency').value;
   const startDate = document.getElementById('fStartDate').value || todayISO();
 
@@ -1599,6 +1665,7 @@ function saveTaskFromForm(ev){
     description: document.getElementById('fDesc').value.trim(),
     category: document.getElementById('fCategory').value,
     location: document.getElementById('fLocation').value.trim(),
+    email,
     priority: document.getElementById('fPriority').value,
     frequency,
     weekday: frequency==='semanal' ? Number(document.getElementById('fWeekday').value) : null,
@@ -1762,7 +1829,7 @@ function importJsonBackup(file){
       if(!data.tasks || !Array.isArray(data.tasks)){ throw new Error('Formato inválido'); }
       if(!confirm('Importar este backup irá substituir todos os dados atuais. Deseja continuar?')) return;
       const importedTasks = data.tasks || [];
-      importedTasks.forEach(t=>{ if(t.location === undefined) t.location = ''; });
+      importedTasks.forEach(t=>{ if(t.location === undefined) t.location = ''; if(t.email === undefined) t.email = ''; });
       const importedHistory = data.history || [];
       importedHistory.forEach(h=>{ if(h.location === undefined) h.location = ''; });
       state = {
@@ -1932,6 +1999,25 @@ function initEvents(){
     if(e.target.files[0]) importJsonBackup(e.target.files[0]);
     e.target.value = '';
   });
+
+  // Atalhos rápidos no cabeçalho: impressão sempre visível + menu de exportação/importação
+  document.getElementById('btnHeaderPrint').addEventListener('click', ()=>{ preparePrintArea(); window.print(); });
+  document.getElementById('btnHeaderExport').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    document.getElementById('exportMenu').classList.toggle('hidden');
+  });
+  document.getElementById('exportMenu').addEventListener('click', (e)=> e.stopPropagation());
+  document.querySelectorAll('#exportMenu [data-action]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.getElementById('exportMenu').classList.add('hidden');
+      const action = btn.dataset.action;
+      if(action==='csv') exportCsv();
+      else if(action==='json') exportJsonBackup();
+      else if(action==='import') document.getElementById('importFileInput').click();
+    });
+  });
+  // Fecha o menu de exportação ao clicar fora dele
+  document.addEventListener('click', ()=> document.getElementById('exportMenu').classList.add('hidden'));
   document.getElementById('btnClearHistory').addEventListener('click', ()=>{
     if(!confirm('Limpar todo o histórico de execuções? Esta ação não pode ser desfeita.')) return;
     state.history = [];
