@@ -407,7 +407,7 @@ select.inline-select,input.inline-input{padding:7px 10px;border-radius:7px;borde
       </div>
       <div style="overflow-x:auto;">
         <table class="hist-table" id="historyTable">
-          <thead><tr><th>Data</th><th>Horário</th><th>Tarefa</th><th>Status</th><th>Observação</th></tr></thead>
+          <thead><tr><th>Data</th><th>Horário</th><th>Tarefa</th><th>Localidade</th><th>Status</th><th>Observação</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -504,6 +504,11 @@ select.inline-select,input.inline-input{padding:7px 10px;border-radius:7px;borde
             <option value="alta">Alta</option>
             <option value="critica">Crítica</option>
           </select>
+        </div>
+        <div class="form-field full">
+          <label>Localidade</label>
+          <input type="text" id="fLocation" list="fLocationList" placeholder="Ex: Datacenter, Matriz, Filial SP, Sala de TI..." maxlength="120">
+          <datalist id="fLocationList"></datalist>
         </div>
         <div class="form-field">
           <label>Frequência</label>
@@ -674,6 +679,16 @@ const MONTH_NAMES = ['janeiro','fevereiro','março','abril','maio','junho','julh
 /* ---------------------------------------------------------------------
    SEED DE TAREFAS INICIAIS (usado apenas no primeiro acesso)
    --------------------------------------------------------------------- */
+// Localidade padrão sugerida por categoria, usada apenas nas tarefas de exemplo.
+function defaultLocationForCategory(cat){
+  const map = {
+    redes:'Datacenter', firewall:'Datacenter', backup:'Datacenter', servidores:'Datacenter',
+    monitoramento:'Datacenter', cloud:'Nuvem', m365:'Nuvem', seguranca:'Sede',
+    cftv:'Portaria', alarmes:'Portaria', infraestrutura:'Datacenter', outros:''
+  };
+  return map[cat] || '';
+}
+
 function buildSeedTasks(){
   const today = new Date();
   const todayStr = toISO(today);
@@ -725,7 +740,7 @@ function buildSeedTasks(){
   daily.forEach(([name,cat,time,pri])=>{
     tasks.push({
       id: uid(), name, description:'', category:cat, frequency:'diaria',
-      weekday:null, customDays:null, startDate:todayStr, time,
+      weekday:null, customDays:null, startDate:todayStr, time, location: defaultLocationForCategory(cat),
       priority:pri, reminderEnabled: !!time, reminderAdvance: 0,
       notes:'', active:true, createdAt:new Date().toISOString(),
       lastExecution:null, nextExecution: todayStr
@@ -735,7 +750,7 @@ function buildSeedTasks(){
   weekly.forEach(([name,cat,dow,time,pri])=>{
     tasks.push({
       id: uid(), name, description:'', category:cat, frequency:'semanal',
-      weekday:dow, customDays:null, startDate:todayStr, time,
+      weekday:dow, customDays:null, startDate:todayStr, time, location: defaultLocationForCategory(cat),
       priority:pri, reminderEnabled: !!time, reminderAdvance: 15,
       notes:'', active:true, createdAt:new Date().toISOString(),
       lastExecution:null, nextExecution: nextWeekday(dow)
@@ -745,7 +760,7 @@ function buildSeedTasks(){
   monthly.forEach(([name,cat])=>{
     tasks.push({
       id: uid(), name, description:'', category:cat, frequency:'mensal',
-      weekday:null, customDays:null, startDate:todayStr, time:'',
+      weekday:null, customDays:null, startDate:todayStr, time:'', location: defaultLocationForCategory(cat),
       priority:'media', reminderEnabled:false, reminderAdvance:15,
       notes:'', active:true, createdAt:new Date().toISOString(),
       lastExecution:null, nextExecution: firstOfNextMonth()
@@ -767,7 +782,9 @@ function loadState(){
       const parsed = JSON.parse(raw);
       // Garante que todos os campos esperados existam (migração leve)
       parsed.tasks = parsed.tasks || [];
+      parsed.tasks.forEach(t=>{ if(t.location === undefined) t.location = ''; });
       parsed.history = parsed.history || [];
+      parsed.history.forEach(h=>{ if(h.location === undefined) h.location = ''; });
       parsed.categories = parsed.categories || defaultCategories();
       parsed.settings = Object.assign(defaultSettings(), parsed.settings||{});
       parsed.meta = parsed.meta || {};
@@ -870,7 +887,7 @@ function completeTask(taskId, notes){
   task.lastExecution = nowStr+' '+timeStr;
 
   state.history.unshift({
-    id: uid(), taskId: task.id, taskName: task.name,
+    id: uid(), taskId: task.id, taskName: task.name, location: task.location || '',
     date: nowStr, time: timeStr, status:'Concluído', notes: notes || ''
   });
 
@@ -1140,7 +1157,7 @@ function renderAgenda(){
     const cat = getCategory(t.category);
     return `<div class="agenda-row">
       <span class="agenda-time">${t.time}</span>
-      <span class="agenda-name">${escapeHtml(t.name)}</span>
+      <span class="agenda-name">${escapeHtml(t.name)}${t.location ? ' <span style="color:var(--text-muted);font-weight:400;">— 📍 '+escapeHtml(t.location)+'</span>' : ''}</span>
       <span class="cat-badge" style="background:${cat.color}">${escapeHtml(cat.name)}</span>
       ${priorityBadge(t.priority)}
     </div>`;
@@ -1176,7 +1193,7 @@ function applyFilterAndSearch(tasks){
   }
   if(ui.search.trim()){
     const q = ui.search.trim().toLowerCase();
-    list = list.filter(t=> t.name.toLowerCase().includes(q) || getCategory(t.category).name.toLowerCase().includes(q));
+    list = list.filter(t=> t.name.toLowerCase().includes(q) || getCategory(t.category).name.toLowerCase().includes(q) || (t.location||'').toLowerCase().includes(q));
   }
   return list;
 }
@@ -1215,6 +1232,7 @@ function taskCardHtml(task, mode){
         <span>🕓 Última: ${lastExec}</span>
         <span>📅 Próxima: ${nextExec}</span>
         ${task.time ? `<span>⏰ ${task.time}</span>` : ''}
+        ${task.location ? `<span>📍 ${escapeHtml(task.location)}</span>` : ''}
       </div>
     </div>
     <div class="task-actions">${actions}</div>
@@ -1378,7 +1396,7 @@ function openDayModal(dateISO){
   }
   if(doneEntries.length){
     html += '<div class="group-title g-done">Concluídas neste dia</div>'+doneEntries.map(h=>
-      `<div class="task-card done"><div class="task-main"><div class="task-name">${escapeHtml(h.taskName)}</div><div class="task-meta"><span>🕓 ${h.time}</span><span>✅ ${h.status}</span>${h.notes?`<span>📝 ${escapeHtml(h.notes)}</span>`:''}</div></div></div>`
+      `<div class="task-card done"><div class="task-main"><div class="task-name">${escapeHtml(h.taskName)}</div><div class="task-meta"><span>🕓 ${h.time}</span><span>✅ ${h.status}</span>${h.location?`<span>📍 ${escapeHtml(h.location)}</span>`:''}${h.notes?`<span>📝 ${escapeHtml(h.notes)}</span>`:''}</div></div></div>`
     ).join('');
   }
   if(!html) html = '<div class="list-empty">Nenhuma tarefa registrada para esta data.</div>';
@@ -1451,7 +1469,7 @@ function renderHistoryTable(){
   let list = state.history.slice();
   if(ui.historySearch.trim()){
     const q = ui.historySearch.trim().toLowerCase();
-    list = list.filter(h=> h.taskName.toLowerCase().includes(q));
+    list = list.filter(h=> h.taskName.toLowerCase().includes(q) || (h.location||'').toLowerCase().includes(q));
   }
   if(list.length===0){
     tbody.innerHTML = '';
@@ -1460,7 +1478,7 @@ function renderHistoryTable(){
   }
   emptyEl.classList.add('hidden');
   tbody.innerHTML = list.slice(0,300).map(h=>
-    `<tr><td>${toBR(h.date)}</td><td>${h.time}</td><td>${escapeHtml(h.taskName)}</td><td>${h.status}</td><td>${escapeHtml(h.notes||'—')}</td></tr>`
+    `<tr><td>${toBR(h.date)}</td><td>${h.time}</td><td>${escapeHtml(h.taskName)}</td><td>${escapeHtml(h.location||'—')}</td><td>${h.status}</td><td>${escapeHtml(h.notes||'—')}</td></tr>`
   ).join('');
 }
 
@@ -1511,6 +1529,13 @@ function populateCategorySelect(){
   sel.innerHTML = state.categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 
+// Sugere localidades já cadastradas em outras tarefas (autocomplete do campo Localidade).
+function populateLocationDatalist(){
+  const list = document.getElementById('fLocationList');
+  const locations = Array.from(new Set(state.tasks.map(t=>t.location).filter(Boolean))).sort();
+  list.innerHTML = locations.map(loc=>`<option value="${escapeAttr(loc)}"></option>`).join('');
+}
+
 function toggleFrequencyFields(){
   const freq = document.getElementById('fFrequency').value;
   document.getElementById('fWeekdayWrap').style.display = (freq==='semanal') ? '' : 'none';
@@ -1524,6 +1549,7 @@ function toggleReminderFields(){
 function openTaskModal(taskId){
   ui.editingTaskId = taskId || null;
   populateCategorySelect();
+  populateLocationDatalist();
   const modal = document.getElementById('taskModal');
   const form = document.getElementById('taskForm');
   form.reset();
@@ -1535,6 +1561,7 @@ function openTaskModal(taskId){
     document.getElementById('fName').value = t.name;
     document.getElementById('fDesc').value = t.description||'';
     document.getElementById('fCategory').value = t.category;
+    document.getElementById('fLocation').value = t.location||'';
     document.getElementById('fPriority').value = t.priority;
     document.getElementById('fFrequency').value = t.frequency;
     document.getElementById('fWeekday').value = (t.weekday!==null && t.weekday!==undefined) ? String(t.weekday) : '1';
@@ -1571,6 +1598,7 @@ function saveTaskFromForm(ev){
     name,
     description: document.getElementById('fDesc').value.trim(),
     category: document.getElementById('fCategory').value,
+    location: document.getElementById('fLocation').value.trim(),
     priority: document.getElementById('fPriority').value,
     frequency,
     weekday: frequency==='semanal' ? Number(document.getElementById('fWeekday').value) : null,
@@ -1704,11 +1732,11 @@ function downloadBlob(content, filename, mime){
 }
 
 function exportCsv(){
-  const header = ['Tarefa','Categoria','Frequência','Prioridade','Última execução','Próxima execução','Status'];
+  const header = ['Tarefa','Categoria','Localidade','Frequência','Prioridade','Última execução','Próxima execução','Status'];
   const rows = state.tasks.map(t=>{
     const cat = getCategory(t.category);
     const status = !t.active ? 'Pausada' : (classifyTask(t)==='overdue' ? 'Atrasada' : classifyTask(t)==='today' ? 'Pendente hoje' : classifyTask(t)==='done' ? 'Concluída hoje' : 'Próxima');
-    return [t.name, cat.name, frequencyLabel(t), t.priority, t.lastExecution?toBR(t.lastExecution.slice(0,10)):'Nunca', t.nextExecution?toBR(t.nextExecution):'—', status];
+    return [t.name, cat.name, t.location||'', frequencyLabel(t), t.priority, t.lastExecution?toBR(t.lastExecution.slice(0,10)):'Nunca', t.nextExecution?toBR(t.nextExecution):'—', status];
   });
   const csv = [header, ...rows].map(r=> r.map(csvEscape).join(',')).join('\r\n');
   downloadBlob('﻿'+csv, 'rotinas-ti_tarefas.csv', 'text/csv;charset=utf-8');
@@ -1733,9 +1761,13 @@ function importJsonBackup(file){
       const data = JSON.parse(e.target.result);
       if(!data.tasks || !Array.isArray(data.tasks)){ throw new Error('Formato inválido'); }
       if(!confirm('Importar este backup irá substituir todos os dados atuais. Deseja continuar?')) return;
+      const importedTasks = data.tasks || [];
+      importedTasks.forEach(t=>{ if(t.location === undefined) t.location = ''; });
+      const importedHistory = data.history || [];
+      importedHistory.forEach(h=>{ if(h.location === undefined) h.location = ''; });
       state = {
-        tasks: data.tasks || [],
-        history: data.history || [],
+        tasks: importedTasks,
+        history: importedHistory,
         categories: data.categories || defaultCategories(),
         settings: Object.assign(defaultSettings(), data.settings||{}),
         meta: data.meta || {notified:{}}
@@ -1769,7 +1801,7 @@ function preparePrintArea(){
     .map(t=>{
       const cat = getCategory(t.category);
       const status = classifyTask(t)==='overdue' ? 'Atrasada' : classifyTask(t)==='today' ? 'Pendente hoje' : classifyTask(t)==='done' ? 'Concluída hoje' : 'Próxima';
-      return `<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(cat.name)}</td><td>${frequencyLabel(t)}</td><td>${t.priority}</td><td>${t.lastExecution?toBR(t.lastExecution.slice(0,10)):'Nunca'}</td><td>${t.nextExecution?toBR(t.nextExecution):'—'}</td><td>${status}</td></tr>`;
+      return `<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(cat.name)}</td><td>${escapeHtml(t.location||'—')}</td><td>${frequencyLabel(t)}</td><td>${t.priority}</td><td>${t.lastExecution?toBR(t.lastExecution.slice(0,10)):'Nunca'}</td><td>${t.nextExecution?toBR(t.nextExecution):'—'}</td><td>${status}</td></tr>`;
     }).join('');
 
   area.innerHTML = `
@@ -1782,7 +1814,7 @@ function preparePrintArea(){
       <div><b>${overdue}</b>Atrasadas</div>
     </div>
     <table>
-      <thead><tr><th>Tarefa</th><th>Categoria</th><th>Frequência</th><th>Prioridade</th><th>Última execução</th><th>Próxima execução</th><th>Status</th></tr></thead>
+      <thead><tr><th>Tarefa</th><th>Categoria</th><th>Localidade</th><th>Frequência</th><th>Prioridade</th><th>Última execução</th><th>Próxima execução</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
